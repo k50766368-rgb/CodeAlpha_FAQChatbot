@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Ask a question about Python and Flask and get the closest answer from the FAQ."
+    />
+    <title>PyGuide · FAQ chatbot</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="PyGuide home">
+          <span class="brand-mark" aria-hidden="true">&gt;_</span>
+          <span>PyGuide</span>
+        </a>
+        <span class="status-pill"><span class="status-dot"></span>FAQ assistant</span>
+      </header>
+
+      <section class="intro">
+        <p class="eyebrow">Python + Flask essentials</p>
+        <h1>Ask the docs.<br /><em>Skip the digging.</em></h1>
+        <p class="intro-copy">
+          Ask a question in your own words. PyGuide uses semantic matching to
+          find the closest answer in the FAQ.
+        </p>
+      </section>
+
+      <section class="chat-card" aria-label="FAQ chat">
+        <div class="chat-heading">
+          <div class="assistant-avatar" aria-hidden="true">P</div>
+          <div>
+            <strong>PyGuide assistant</strong>
+            <span>Answers from the Python + Flask FAQ</span>
+          </div>
+        </div>
+
+        <div class="messages" id="messages" aria-live="polite">
+          <div class="message-row bot-row">
+            <div class="message bot-message">
+              <p>Hi there. What would you like to know about Python or Flask?</p>
+              <span class="message-time">just now</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="suggestions" aria-label="Suggested questions">
+          <span>Try asking</span>
+          {% for faq in faqs[:3] %}
+          <button class="suggestion" type="button" data-question="{{ faq.question }}">
+            {{ faq.question }}
+          </button>
+          {% endfor %}
+        </div>
+
+        <form class="composer" id="question-form">
+          <label class="sr-only" for="question-input">Your question</label>
+          <input
+            id="question-input"
+            name="question"
+            type="text"
+            autocomplete="off"
+            placeholder="e.g. How do I create a route?"
+            maxlength="300"
+            required
+          />
+          <button class="send-button" type="submit" aria-label="Send question">
+            <span>Send</span>
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M3 10h12M11 5l5 5-5 5" />
+            </svg>
+          </button>
+        </form>
+        <p class="confidence-note">Answers are matched with TF-IDF + cosine similarity</p>
+      </section>
+
+      <footer>
+        <span><span class="footer-dot"></span> {{ faqs|length }} topics in this FAQ</span>
+        <span>Built with Flask + scikit-learn</span>
+      </footer>
+    </main>
+
+    <script>
+      const form = document.querySelector("#question-form");
+      const input = document.querySelector("#question-input");
+      const messages = document.querySelector("#messages");
+      const suggestions = document.querySelectorAll(".suggestion");
+
+      const timeLabel = () =>
+        new Intl.DateTimeFormat([], { hour: "numeric", minute: "2-digit" }).format(new Date());
+
+      const addMessage = (text, type, meta = "") => {
+        const row = document.createElement("div");
+        row.className = `message-row ${type === "user" ? "user-row" : "bot-row"}`;
+        const bubble = document.createElement("div");
+        bubble.className = `message ${type === "user" ? "user-message" : "bot-message"}`;
+        const paragraph = document.createElement("p");
+        paragraph.textContent = text;
+        const timestamp = document.createElement("span");
+        timestamp.className = "message-time";
+        timestamp.textContent = meta || timeLabel();
+        bubble.append(paragraph, timestamp);
+        row.appendChild(bubble);
+        messages.appendChild(row);
+        messages.scrollTop = messages.scrollHeight;
+      };
+
+      const addTyping = () => {
+        const row = document.createElement("div");
+        row.className = "message-row bot-row";
+        row.id = "typing";
+        row.innerHTML =
+          '<div class="message bot-message typing-message"><span></span><span></span><span></span></div>';
+        messages.appendChild(row);
+        messages.scrollTop = messages.scrollHeight;
+      };
+
+      const removeTyping = () => document.querySelector("#typing")?.remove();
+
+      const submitQuestion = async (question) => {
+        const trimmedQuestion = question.trim();
+        if (!trimmedQuestion) return;
+        addMessage(trimmedQuestion, "user");
+        input.value = "";
+        input.disabled = true;
+        document.querySelector(".send-button").disabled = true;
+        addTyping();
+
+        try {
+          const response = await fetch("{{ url_for('ask') }}", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ question: trimmedQuestion }),
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || "Something went wrong.");
+          removeTyping();
+          addMessage(result.answer, "bot");
+        } catch (error) {
+          removeTyping();
+          addMessage("I couldn't process that question. Please try again.", "bot");
+        } finally {
+          input.disabled = false;
+          document.querySelector(".send-button").disabled = false;
+          input.focus();
+        }
+      };
+
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        submitQuestion(input.value);
+      });
+
+      suggestions.forEach((suggestion) => {
+        suggestion.addEventListener("click", () => submitQuestion(suggestion.dataset.question));
+      });
+    </script>
+  </body>
+</html>
